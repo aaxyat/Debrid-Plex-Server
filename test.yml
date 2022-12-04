@@ -1,0 +1,76 @@
+version: '3.7'
+# Make sure you have Fuse installed
+networks:
+  default:
+    driver: gluetun
+  gluetun:
+    name: gluetun
+    driver: bridge
+services:
+   gluetun:
+    image: qmcgaw/gluetun
+    container_name: gluetun
+    # line above must be uncommented to allow external containers to connect. See https://github.com/qdm12/gluetun/wiki/Connect-a-container-to-gluetun#external-container-to-gluetun
+    cap_add:
+      - NET_ADMIN
+    networks:
+      - gluetun
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    volumes:
+      - /data/gluten:/gluetun
+    environment:
+      # See https://github.com/qdm12/gluetun/wiki
+      - VPN_SERVICE_PROVIDER=ipvanish
+      - OPENVPN_USER=<VPN-USER>
+      - OPENVPN_PASSWORD=<VPN-PASS>
+      - SERVER_COUNTRIES=Netherlands
+      # Wireguard:
+      # - WIREGUARD_PRIVATE_KEY=wOEI9rqqbDwnN8/Bpp22sVz48T71vJ4fYmFWujulwUU=
+      # - WIREGUARD_ADDRESSES=10.64.222.21/32
+      # Timezone for accurate log times
+      - TZ=Asia/Kathmandu
+   
+      
+   rclone:
+    container_name: rclone
+    image: rclone/rclone
+    restart: unless-stopped
+    network_mode: container:gluetun
+    devices:
+      - /dev/fuse:/dev/fuse:rwm
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - apparmor:unconfined    
+    volumes:
+      - /data/rclone/config:/config/rclone #save your rclone.conf here
+      - /data/logs/rclone:/log
+      - /data/appdata/rclone/cache:/cache
+      - /data/appdata/rclone/mnt:/data:shared
+      - /etc/fuse.conf:/etc/fuse.conf:ro      
+    command: 'mount RealD: /data/ --allow-non-empty --dir-cache-time=10s --vfs-cache-mode=full --vfs-cache-max-size 50G --cache-dir=/cache/RealD --allow-other' #modify directories and rclone service names
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Kathmandu
+
+    depends_on:
+      - gluetun  
+      
+   plex:
+    image: lscr.io/linuxserver/plex:latest
+    container_name: plex
+    network_mode: host
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - VERSION=docker
+      - PLEX_CLAIM= #Claim Code
+    volumes:
+      - /config/plex:/config
+      - /data/appdata/rclone/mnt/torrents/:/tv
+      - /data/appdata/rclone/mnt/torrents/:/movies
+    restart: unless-stopped
+    depends_on:
+      - rclone
